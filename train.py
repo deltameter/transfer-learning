@@ -52,7 +52,10 @@ def train():
 
         init = tf.global_variables_initializer()
 
-        saver = tf.train.Saver()
+        # save only the trainable variables
+        train_vars = tf.trainable_variables()
+        save_dict = { v.op.name: v for v in train_vars if 'softmax' not in v.op.name }
+        saver = tf.train.Saver(save_dict)
 
         sess = tf.Session()
 
@@ -78,7 +81,7 @@ def train():
             writer.add_summary(value, step)
             writer.flush()
 
-        for step in range(FLAGS.steps):
+        for step in range(FLAGS.steps + 1):
             images, labels = dataset.get_minibatch(FLAGS.batch_size)
 
             images = sess.run(augment_images, feed_dict={ images_matrix_ph: images })
@@ -110,6 +113,7 @@ def train():
 
             # calculate training accuracy and save the model
             if step % 2500 == 0:
+                # save everything but the softmax layer
                 saver.save(sess, './models/cifar.ckpt', global_step=step)                        
                 write_accuracy('train_accuracy', step, dataset.train_examples[:10000], dataset.train_labels[:10000])
 
