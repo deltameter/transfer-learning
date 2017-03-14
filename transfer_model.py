@@ -82,23 +82,23 @@ def inference(images, dfs, dropout_probs):
     images = tf.nn.dropout(images, dropout_probs["input"])
 
     with tf.variable_scope('conv1'):
-        kernel_shape = [3, 3, 64]
-        conv1 = conv_layer(images, kernel_shape, dropout_probs["conv"], should_pool=False)
+        kernel_shape = [5, 5, 96]
+        conv1 = conv_layer(images, kernel_shape, dropout_probs["conv"])
 
     with tf.variable_scope('conv2'):
-        kernel_shape = [3, 3, 96]
+        kernel_shape = [3, 3, 128]
         conv2 = conv_layer(conv1, kernel_shape, dropout_probs["conv"])
 
     with tf.variable_scope('conv3'):
-        kernel_shape = [3, 3, 128]
+        kernel_shape = [3, 3, 256]
         conv3 = conv_layer(conv2, kernel_shape, dropout_probs["fc"])
 
     with tf.variable_scope('fc1'):
-        output3_flat = tf.reshape(conv3, [-1, int(conv3.shape[1]) ** 2 * 128])
-        fc1 = fc_layer(output3_flat, 2048)
+        output3_flat = tf.reshape(conv3, [-1, int(conv3.shape[1]) ** 2 * (int(conv3.shape[3]))])
+        fc1 = fc_layer(output3_flat, 1024)
 
     with tf.variable_scope('fc2'):
-        fc2 = fc_layer(fc1, 2048)
+        fc2 = fc_layer(fc1, 1024)
 
     with tf.variable_scope('softmax'):
         logits = fc_layer(fc2, dfs['NUM_LABELS'], is_output=True)

@@ -1,6 +1,6 @@
 import tensorflow as tf
 import transfer_model
-from dataset import Dataset, ToyDataset
+from dataset import CifarDataset, Cifar100Dataset 
 import argparse
 import shutil
 import numpy as np
@@ -12,7 +12,8 @@ def val_to_summary(tag, value):
     ])
 
 def train():
-    dataset = Dataset()
+    dataset = Cifar100Dataset(FLAGS.transfer)
+    train_accuracy_images, train_accuracy_labels = dataset.get_train_data()
     test_images, test_labels = dataset.get_test_data()
 
     with tf.Graph().as_default():
@@ -54,12 +55,16 @@ def train():
 
         # save only the trainable variables
         train_vars = tf.trainable_variables()
+        # discard the softmax layer
         save_dict = { v.op.name: v for v in train_vars if 'softmax' not in v.op.name }
         saver = tf.train.Saver(save_dict)
 
         sess = tf.Session()
 
         sess.run(init)
+
+        if not FLAGS.no_restore:
+            saver.restore(sess, tf.train.latest_checkpoint('./models/original'))
 
         # used to log training, validation error to tensorboard
         def write_accuracy(tag, step, examples, labels):
@@ -76,11 +81,11 @@ def train():
                         fc_drop: 1.0
                     })
 
-            value = val_to_summary(tag, num_correct / len(test_labels))
+            value = val_to_summary(tag, num_correct / len(labels))
 
             writer.add_summary(value, step)
             writer.flush()
-
+        
         for step in range(FLAGS.steps + 1):
             images, labels = dataset.get_minibatch(FLAGS.batch_size)
 
@@ -113,15 +118,29 @@ def train():
 
             # calculate training accuracy and save the model
             if step % 2500 == 0:
-                # save everything but the softmax layer
-                saver.save(sess, './models/cifar.ckpt', global_step=step)                        
-                write_accuracy('train_accuracy', step, dataset.train_examples[:10000], dataset.train_labels[:10000])
+                if not FLAGS.no_save:
+                    if not FLAGS.transfer:
+                        saver.save(sess, './models/original/save.ckpt', global_step=step)
+                    elif FLAGS.no_restore:
+                        saver.save(sess, './models/scratch/scratch.ckpt', global_step=step)
+                    else:
+                        saver.save(sess, './models/transfer/transfered.ckpt', global_step=step)
+
+                    write_accuracy('train_accuracy', step, train_accuracy_images, train_accuracy_labels)
 
             # calculate validation accuracy
             if step % 1000 == 0:
                 write_accuracy('test_accuracy', step, test_images, test_labels)
 
 def main(_):
+    if not FLAGS.transfer:
+        FLAGS.log_dir='./logs/original'
+    else:
+        if FLAGS.no_restore:
+            FLAGS.log_dir='./logs/transfer-scratch'
+        else:
+            FLAGS.log_dir='./logs/transfer-restore'
+
     if FLAGS.wipe_logs and os.path.exists(FLAGS.log_dir):
         shutil.rmtree(FLAGS.log_dir)
 
@@ -147,7 +166,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--steps',
         type=int,
-        default=10000,
+        default=100000,
         help='How many minibatch SGDs to run.'
     )
 
@@ -180,17 +199,31 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
-        '--log_dir',
-        type=str,
-        default='./logs',
-        help='Dropout probability for input layer'
-    )
-
-    parser.add_argument(
         '--wipe_logs',
         default=False,
         action='store_true',
-        help='Delete all logs.'
+        help='Delete Tensorboard logs in specified log directory.'
+    )
+    
+    parser.add_argument(
+        '--no_save',
+        default=False,
+        action='store_true',
+        help='Do not save the model'
+    )
+
+    parser.add_argument(
+        '--no_restore',
+        default=False,
+        action='store_true',
+        help='Start training from scratch'
+    )
+
+    parser.add_argument(
+        '--transfer',
+        default=False,
+        action='store_true',
+        help='Train the other dataset (the one to transfer learn on)'
     )
 
     FLAGS, unparsed = parser.parse_known_args()
